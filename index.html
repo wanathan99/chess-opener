@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Opening Trainer</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Chess Opening Trainer</h1>
+    <p class="tagline">Play an opening, get told why each move works, and see how it holds up against different replies.</p>
+  </header>
+
+  <main class="layout">
+    <section class="setup-panel">
+      <label for="opening-select">Opening</label>
+      <select id="opening-select"></select>
+      <p id="opening-summary" class="summary"></p>
+      <div class="setup-buttons">
+        <button id="start-btn">Start / Restart line</button>
+        <button id="hint-btn" title="Show the recommended move without playing it">Hint</button>
+      </div>
+      <div class="stats" id="stats-box"></div>
+    </section>
+
+    <section class="board-panel">
+      <div class="turn-status" id="turn-status">Pick an opening and press Start.</div>
+      <div class="board" id="board"></div>
+      <div class="move-list" id="move-list"></div>
+    </section>
+
+    <section class="coach-panel">
+      <h2>Coach</h2>
+      <div class="coach-feed" id="coach-feed"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

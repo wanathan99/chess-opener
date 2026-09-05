@@ -31,6 +31,12 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Roughly how long an explanation takes to read, so "Watch a simulation"
+// lingers longer on a dense paragraph than on a one-word reply.
+function readingPause(text) {
+  return Math.min(5500, Math.max(1800, text.length * 35));
+}
+
 // --- opening picker -------------------------------------------------------
 
 function populateOpeningSelect() {
@@ -143,7 +149,7 @@ async function watchLine() {
   addCoachNote('info', null, `Watching the ${opening.name} as ${opening.side === 'w' ? 'White' : 'Black'}. ${opening.summary}`);
   render();
   turnStatus.textContent = 'Watching a simulation…';
-  await wait(500);
+  await wait(1200);
 
   while (isWatching && currentNode.children.length > 0) {
     const children = currentNode.children;
@@ -162,7 +168,8 @@ async function watchLine() {
     logMove(result.san);
     addCoachNote(step.mover === 'you' ? 'good' : 'info', result.san, step.explain);
     render();
-    await wait(1100);
+    // Give longer explanations more time on screen instead of a flat pause.
+    await wait(readingPause(step.explain));
   }
 
   if (isWatching) {
@@ -198,6 +205,15 @@ function addCoachNote(tone, moveLabel, text) {
   div.appendChild(document.createTextNode(text));
   coachFeed.appendChild(div);
   coachFeed.scrollTop = coachFeed.scrollHeight;
+  // On narrow/stacked layouts the coach panel sits far below the board, so
+  // scroll the page itself to the newest note — div.scrollIntoView() alone
+  // only satisfies the nearest scrollable ancestor (coachFeed) and leaves
+  // the outer page scroll untouched.
+  const rect = div.getBoundingClientRect();
+  const alreadyVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+  if (!alreadyVisible) {
+    window.scrollTo({ top: window.scrollY + rect.top - 16, behavior: 'auto' });
+  }
 }
 
 function logMove(san) {

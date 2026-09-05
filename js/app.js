@@ -1,6 +1,6 @@
 import { Chess } from '../vendor/chess.js';
 import { OPENINGS, findOpening } from './openings.js';
-import { heuristicFeedback, pickEngineMove, explainIllegalMove } from './engine.js';
+import { heuristicFeedback, pickEngineMove, explainIllegalMove, findHangingPieces, pieceName } from './engine.js';
 
 const PIECE_GLYPHS = {
   w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
@@ -250,12 +250,89 @@ function handleUserMove(from, to) {
   const candidate = verboseMoves.find((m) => m.to === to);
   if (!candidate) return;
   const needsPromotion = candidate.flags.includes('p');
-  const moveResult = game.move({ from, to, promotion: needsPromotion ? 'q' : undefined });
+  const promotion = needsPromotion ? 'q' : undefined;
+
+  // Play the move tentatively so we can analyze the resulting position
+  // before it's finalized — undo it again if the trainee cancels.
+  const moveResult = game.move({ from, to, promotion });
   if (!moveResult) return;
+
+  const reasons = [];
+  if (bookActive) {
+    const match = currentNode.children.find((c) => c.move === moveResult.san);
+    if (!match) {
+      const recommended = currentNode.children.find((c) => c.mover === 'you');
+      reasons.push(
+        recommended
+          ? `That's not the book move here. The recommended move is ${recommended.move} — ${recommended.explain}`
+          : "That's outside our prepared line for this opening."
+      );
+    }
+  }
+  const hanging = findHangingPieces(game, moveResult.color);
+  if (hanging.length > 0) {
+    const worst = hanging[0];
+    reasons.push(`This hangs your ${pieceName(worst.type)} on ${worst.square} — your opponent can win about ${worst.netLoss} point${worst.netLoss === 1 ? '' : 's'} of material.`);
+  }
+
+  if (reasons.length > 0) {
+    game.undo();
+    selectedSquare = null;
+    render();
+    promptConfirm(reasons, () => {
+      const finalResult = game.move({ from, to, promotion });
+      lastMove = { from, to };
+      render();
+      processTraineeMove(finalResult);
+    });
+    return;
+  }
+
   lastMove = { from, to };
   selectedSquare = null;
   render();
   processTraineeMove(moveResult);
+}
+
+function promptConfirm(reasons, onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Before you play that…';
+  box.appendChild(title);
+
+  for (const reason of reasons) {
+    const p = document.createElement('p');
+    p.textContent = reason;
+    box.appendChild(p);
+  }
+
+  const buttonRow = document.createElement('div');
+  buttonRow.className = 'confirm-buttons';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'confirm-cancel';
+  cancelBtn.textContent = 'Choose a different move';
+
+  const playBtn = document.createElement('button');
+  playBtn.className = 'confirm-play';
+  playBtn.textContent = 'Play it anyway';
+
+  buttonRow.appendChild(cancelBtn);
+  buttonRow.appendChild(playBtn);
+  box.appendChild(buttonRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  cancelBtn.addEventListener('click', () => overlay.remove());
+  playBtn.addEventListener('click', () => {
+    overlay.remove();
+    onConfirm();
+  });
 }
 
 // --- hint ---------------------------------------------------------------

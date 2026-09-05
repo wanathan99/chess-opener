@@ -1,6 +1,6 @@
 import { Chess } from '../vendor/chess.js';
 import { OPENINGS, findOpening } from './openings.js';
-import { heuristicFeedback, pickEngineMove, findHangingPieces, pieceName } from './engine.js';
+import { heuristicFeedback, pickEngineMove, explainIllegalMove } from './engine.js';
 
 const PIECE_GLYPHS = {
   w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
@@ -378,6 +378,12 @@ function onSquareClick(square) {
     const isLegalTarget = verboseMoves.some((m) => m.to === square);
     if (isLegalTarget) {
       handleUserMove(selectedSquare, square);
+      return;
+    }
+    if (!piece || piece.color !== traineeColor()) {
+      addCoachNote('bad', null, explainIllegalMove(game, selectedSquare, square));
+      selectedSquare = null;
+      render();
       return;
     }
   }

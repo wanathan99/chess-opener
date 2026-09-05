@@ -134,6 +134,49 @@ export function findHangingPieces(game, color) {
   return found.sort((a, b) => b.netLoss - a.netLoss);
 }
 
+// Pure movement-pattern check (ignores blocking pieces and check), used only
+// to explain *why* an attempted move was illegal.
+function matchesMovementPattern(type, from, to, color) {
+  const [fr, fc] = squareToRC(from);
+  const [tr, tc] = squareToRC(to);
+  const dr = tr - fr, dc = tc - fc;
+  const adr = Math.abs(dr), adc = Math.abs(dc);
+  switch (type) {
+    case 'n':
+      return (adr === 2 && adc === 1) || (adr === 1 && adc === 2);
+    case 'b':
+      return adr === adc && adr > 0;
+    case 'r':
+      return (dr === 0 && dc !== 0) || (dc === 0 && dr !== 0);
+    case 'q':
+      return (adr === adc && adr > 0) || (dr === 0 && dc !== 0) || (dc === 0 && dr !== 0);
+    case 'k':
+      return (adr <= 1 && adc <= 1 && (adr !== 0 || adc !== 0)) || (adr === 0 && adc === 2); // allow castling-shape
+    case 'p': {
+      const forward = color === 'w' ? -1 : 1; // board row decreases going up for white
+      const startRow = color === 'w' ? 6 : 1;
+      if (dc === 0) return dr === forward || (fr === startRow && dr === forward * 2);
+      return adc === 1 && dr === forward;
+    }
+    default:
+      return false;
+  }
+}
+
+// Produces a short, specific reason an attempted move isn't legal, for the
+// click-to-move UI to show when the player tries an illegal destination.
+export function explainIllegalMove(game, from, to) {
+  const piece = game.get(from);
+  if (!piece) return "There's no piece to move there.";
+  const target = game.get(to);
+  if (target && target.color === piece.color) return `You already have a piece on ${to}.`;
+  const patternOk = matchesMovementPattern(piece.type, from, to, piece.color);
+  if (!patternOk) {
+    return `A ${pieceName(piece.type)} can't move from ${from} to ${to} — that's not how it moves.`;
+  }
+  return `${from}-${to} is blocked by another piece in the way, or it would leave your king in check.`;
+}
+
 const CENTER_SQUARES = new Set(['d4', 'd5', 'e4', 'e5']);
 const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 

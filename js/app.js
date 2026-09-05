@@ -1,6 +1,6 @@
 import { Chess } from '../vendor/chess.js';
 import { OPENINGS, findOpening } from './openings.js';
-import { heuristicFeedback, pickEngineMove, explainIllegalMove, findHangingPieces, pieceName } from './engine.js';
+import { heuristicFeedback, pickEngineMove, explainIllegalMove, newlyHangingPieces, pieceName } from './engine.js';
 
 const PIECE_GLYPHS = {
   w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
@@ -12,6 +12,7 @@ const openingSelect = document.getElementById('opening-select');
 const openingSummary = document.getElementById('opening-summary');
 const startBtn = document.getElementById('start-btn');
 const hintBtn = document.getElementById('hint-btn');
+const watchBtn = document.getElementById('watch-btn');
 const statsBox = document.getElementById('stats-box');
 const turnStatus = document.getElementById('turn-status');
 const moveListEl = document.getElementById('move-list');
@@ -24,6 +25,11 @@ let bookActive = false;
 let selectedSquare = null;
 let lastMove = null;
 let awaitingOpponent = false;
+let isWatching = false;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // --- opening picker -------------------------------------------------------
 
@@ -87,6 +93,7 @@ function renderStats() {
 // --- game lifecycle -------------------------------------------------------
 
 function startLine() {
+  if (isWatching) return;
   opening = findOpening(openingSelect.value);
   if (!opening) return;
   game = new Chess();
@@ -106,6 +113,67 @@ function startLine() {
 
   render();
   advanceOpponentIfNeeded();
+}
+
+// Auto-plays the whole curated line hands-off, narrating every move with
+// the same explanations a trainee gets, so you can watch it before trying
+// it yourself. Opponent branch points are still picked randomly (weighted),
+// so re-watching the same opening can show a different path.
+async function watchLine() {
+  if (isWatching) {
+    isWatching = false; // signals the loop below to stop after this step
+    return;
+  }
+  const chosen = findOpening(openingSelect.value);
+  if (!chosen) return;
+  opening = chosen;
+  isWatching = true;
+  watchBtn.textContent = 'Stop watching';
+  startBtn.disabled = true;
+  hintBtn.disabled = true;
+  openingSelect.disabled = true;
+
+  game = new Chess();
+  currentNode = opening.tree;
+  bookActive = false; // watch mode doesn't take trainee input, so book-matching is irrelevant
+  selectedSquare = null;
+  lastMove = null;
+  moveListEl.innerHTML = '';
+  coachFeed.innerHTML = '';
+  addCoachNote('info', null, `Watching the ${opening.name} as ${opening.side === 'w' ? 'White' : 'Black'}. ${opening.summary}`);
+  render();
+  turnStatus.textContent = 'Watching a simulation…';
+  await wait(500);
+
+  while (isWatching && currentNode.children.length > 0) {
+    const children = currentNode.children;
+    let step = children[0];
+    if (children.length > 1) {
+      const totalWeight = children.reduce((s, c) => s + (c.weight || 1), 0);
+      let roll = Math.random() * totalWeight;
+      for (const c of children) {
+        roll -= c.weight || 1;
+        if (roll <= 0) { step = c; break; }
+      }
+    }
+    const result = game.move(step.move);
+    currentNode = step;
+    lastMove = { from: result.from, to: result.to };
+    logMove(result.san);
+    addCoachNote(step.mover === 'you' ? 'good' : 'info', result.san, step.explain);
+    render();
+    await wait(1100);
+  }
+
+  if (isWatching) {
+    addCoachNote('neutral', null, "That's the end of our prepared line for this opening — press Start to try it yourself.");
+  }
+  isWatching = false;
+  watchBtn.textContent = 'Watch a simulation';
+  startBtn.disabled = false;
+  hintBtn.disabled = false;
+  openingSelect.disabled = false;
+  turnStatus.textContent = 'Press Start to play it yourself, or Watch to see another line.';
 }
 
 function traineeColor() {
@@ -258,9 +326,10 @@ function handleUserMove(from, to) {
   if (!moveResult) return;
 
   const reasons = [];
+  let bookMatch = null;
   if (bookActive) {
-    const match = currentNode.children.find((c) => c.move === moveResult.san);
-    if (!match) {
+    bookMatch = currentNode.children.find((c) => c.move === moveResult.san);
+    if (!bookMatch) {
       const recommended = currentNode.children.find((c) => c.mover === 'you');
       reasons.push(
         recommended
@@ -269,10 +338,14 @@ function handleUserMove(from, to) {
       );
     }
   }
-  const hanging = findHangingPieces(game, moveResult.color);
-  if (hanging.length > 0) {
-    const worst = hanging[0];
-    reasons.push(`This hangs your ${pieceName(worst.type)} on ${worst.square} — your opponent can win about ${worst.netLoss} point${worst.netLoss === 1 ? '' : 's'} of material.`);
+  // Trust the curated line rather than second-guessing it with the shallow
+  // heuristic — only check for newly-hung material on non-book moves.
+  if (!bookMatch) {
+    const hanging = newlyHangingPieces(game, moveResult);
+    if (hanging.length > 0) {
+      const worst = hanging[0];
+      reasons.push(`This hangs your ${pieceName(worst.type)} on ${worst.square} — your opponent can win about ${worst.netLoss} point${worst.netLoss === 1 ? '' : 's'} of material.`);
+    }
   }
 
   if (reasons.length > 0) {
@@ -427,6 +500,10 @@ function render() {
 }
 
 function updateTurnStatus() {
+  if (isWatching) {
+    turnStatus.textContent = 'Watching a simulation…';
+    return;
+  }
   if (!opening) {
     turnStatus.textContent = 'Pick an opening and press Start.';
     return;
@@ -445,7 +522,7 @@ function updateTurnStatus() {
 }
 
 function onSquareClick(square) {
-  if (!opening || game.game_over() || awaitingOpponent) return;
+  if (!opening || game.game_over() || awaitingOpponent || isWatching) return;
   if (!isTraineeTurn()) return;
 
   const piece = game.get(square);
@@ -478,4 +555,5 @@ function onSquareClick(square) {
 populateOpeningSelect();
 startBtn.addEventListener('click', startLine);
 hintBtn.addEventListener('click', showHint);
+watchBtn.addEventListener('click', watchLine);
 render();

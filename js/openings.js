@@ -31,7 +31,7 @@ export const OPENINGS = [
                   O('Bc5', 'The Giuoco Piano — Black mirrors your bishop and fights for the same diagonal.', 3, [
                     Y('c3', 'Prepares d4 so you can build a full pawn center next.', [
                       O('Nf6', 'Develops and counterattacks your e4 pawn.', 1, [
-                        Y('d4', 'Strikes in the center now that c3 supports the pawn.', [
+                        Y('d4', "A double attack — it hits both the e5 pawn and the bishop on c5. Your e4 pawn looks loose to Black's knight, but grabbing it with ...Nxe4? is a trap: 6.dxc5! wins the bishop, since the knight abandoned its defense.", [
                           O('exd4', "Black captures rather than let you get a free central tempo.", 1, [
                             Y('cxd4', "Recaptures and restores a full classical center — Black's bishop on c5 usually has to retreat to b4+ or b6 next.", []),
                           ]),

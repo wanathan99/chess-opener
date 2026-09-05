@@ -177,6 +177,21 @@ export function explainIllegalMove(game, from, to) {
   return `${from}-${to} is blocked by another piece in the way, or it would leave your king in check.`;
 }
 
+// Hanging pieces that existed before this move (inherited from earlier play,
+// or from the opponent's last move) shouldn't be blamed on the move itself —
+// otherwise a correct book move gets flagged just because some other piece
+// was already loose. This compares hanging pieces just before vs. just after
+// `moveResult`, by square, and returns only the ones newly introduced.
+export function newlyHangingPieces(game, moveResult) {
+  const color = moveResult.color;
+  const afterHanging = findHangingPieces(game, color);
+  if (afterHanging.length === 0) return [];
+  game.undo();
+  const beforeSquares = new Set(findHangingPieces(game, color).map((h) => h.square));
+  game.move({ from: moveResult.from, to: moveResult.to, promotion: moveResult.promotion });
+  return afterHanging.filter((h) => !beforeSquares.has(h.square));
+}
+
 const CENTER_SQUARES = new Set(['d4', 'd5', 'e4', 'e5']);
 const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 
@@ -191,7 +206,7 @@ export function heuristicFeedback(game, moveObj, plyBeforeMove, history) {
   const color = moveObj.color;
   const fullMoveNumber = Math.ceil((plyBeforeMove + 1) / 2);
 
-  const myHanging = findHangingPieces(game, color);
+  const myHanging = newlyHangingPieces(game, moveObj);
   if (myHanging.length > 0) {
     const worst = myHanging[0];
     notes.push({
